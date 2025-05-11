@@ -11,12 +11,12 @@
 #### 修改模板代码
 
 - 修改此文档顶部插件名称信息
-- 将此文档下方的`<插件发布仓库地址>`改为你的插件在 GitHub· 上的地址
-- 补充下方的`使用`章节内容
-- 修改`main.py`中的`@register`中的插件 名称、描述、版本、作者 等信息
+- 将此文档下方的`<插件发布仓库地址>`改为你的插件在 GitHub 上的地址
+- 补充下方的`使用`章节内
 - 修改`main.py`中的`MyPlugin`类名为你的插件类名
+- 修改`manifest.yaml`中的信息
 - 将插件所需依赖库写到`requirements.txt`中
-- 根据[插件开发教程](https://docs.langbot.app/plugin/dev/tutor.html)编写插件代码
+- 根据[插件开发教程](https://docs.langbot.app/zh/plugin/dev/tutor.html)编写插件代码
 - 删除 README.md 中的注释内容
 
 
@@ -30,11 +30,7 @@
 
 ## 安装
 
-配置完成 [LangBot](https://github.com/RockChinQ/LangBot) 主程序后使用管理员账号向机器人发送命令即可安装：
-
-```
-!plugin get <你的插件发布仓库地址>
-```
+配置完成 [LangBot](https://github.com/RockChinQ/LangBot) 主程序后即可到插件管理页面安装  
 或查看详细的[插件安装说明](https://docs.langbot.app/plugin/plugin-intro.html#%E6%8F%92%E4%BB%B6%E7%94%A8%E6%B3%95)
 
 ## 使用
