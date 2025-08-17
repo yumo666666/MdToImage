@@ -2,6 +2,8 @@ from pkg.plugin.context import register, handler, llm_func, BasePlugin, APIHost,
 from pkg.plugin.events import *  # 导入事件类
 from pkg.platform.types import *  # 导入所有消息类型
 import re
+import json
+import os
 
 
 # 注册插件
@@ -23,41 +25,51 @@ class ToImage(BasePlugin):
         """
         # 调用父类初始化，确保宿主对象等正确注入
         super().__init__(host)
-        # base_url 不设默认值，仅在 initialize 中从配置读取
-        # self.base_url 将在 initialize 中按需设置
+        # 从插件目录下的 config.json 读取 base_url
+        self.base_url: str = self._load_base_url_from_config()
+
+    def _load_base_url_from_config(self) -> str:
+        """从同目录的 config.json 读取 base_url 配置。
+
+        读取顺序：
+        - 优先从 plugins/ToImage/config.json 读取 base_url 字段；
+        - 如果文件不存在、解析失败或字段缺失/为空，返回空字符串（表示未配置）。
+
+        Returns:
+            str: 读取到的 base_url（可能为空字符串表示未配置）。
+        """
+        current_dir = os.path.dirname(__file__)
+        config_path = os.path.join(current_dir, 'config.json')
+        try:
+            if not os.path.exists(config_path):
+                return ""
+            with open(config_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                base_url = (data.get('base_url') or '').strip()
+                return base_url.rstrip('/') if base_url else ""
+        except Exception:
+            # 读取失败即视为未配置
+            return ""
 
     async def initialize(self):
         """插件的异步初始化方法。
         用于在插件加载后进行异步资源初始化，例如网络连接、缓存预热等。
-        同时在此阶段从插件配置（manifest 注入）中读取 base_url（如未配置则不设置）。
         """
-        try:
-            cfg = self.config or {}
-            cfg_base_url = str(cfg.get("base_url", "")).strip()
-            if cfg_base_url:
-                # 去除末尾斜杠，避免拼接出现重复 //
-                self.base_url = cfg_base_url.rstrip("/")
-                if hasattr(self, 'ap') and hasattr(self.ap, 'logger'):
-                    self.ap.logger.debug(f"ToImagePlugin 已应用配置 base_url={self.base_url}")
-        except Exception as e:
-            # 不中断主流程，记录日志以便排查
-            if hasattr(self, 'ap') and hasattr(self.ap, 'logger'):
-                self.ap.logger.error(f"ToImagePlugin.initialize 读取配置失败: {e}")
+        pass
 
     def normalize_image_url(self, url: str) -> str:
         """将图片URL标准化。
 
         功能：
         - 若已是 http/https 或 data URI，则原样返回；
-        - 若以 "/" 开头（相对路径，如 /api/system/img/...），且已配置 base_url，则自动补齐为 base_url + 相对路径；
-        - 未配置 base_url 时不做补齐；
+        - 若以 "/" 开头（相对路径，如 /api/system/img/...），自动补齐为 base_url + 相对路径；
         - 其他情况维持原样。
 
         Args:
             url (str): 图片原始URL。
 
         Returns:
-            str: 处理后的完整URL（或原URL）。
+            str: 处理后的完整URL。
         """
         try:
             if not url:
@@ -66,11 +78,8 @@ class ToImage(BasePlugin):
             if lower.startswith("http://") or lower.startswith("https://") or lower.startswith("data:"):
                 return url
             if url.startswith("/"):
-                # 仅在已配置 base_url 时进行补齐
-                base = getattr(self, 'base_url', '').strip()
-                if base:
-                    return base.rstrip("/") + url
-                return url
+                # 补齐前缀
+                return self.base_url.rstrip("/") + url
             return url
         except Exception:
             # 失败时不阻断流程，直接返回原URL
@@ -88,7 +97,7 @@ class ToImage(BasePlugin):
         Returns:
             list: 有序列表，元素为{"type": "text", "content": str}或{"type": "image", "alt": str, "url": str}。
         """
-        # 匹配Markdown图片格式：![]()
+        # 匹配Markdown图片格式：![描述](URL)
         pattern = r'!\[([^\]]*)\]\(([^)]+)\)'
 
         result = []
@@ -121,8 +130,9 @@ class ToImage(BasePlugin):
         """拦截并修改 AI 即将发送的普通文本回复。
 
         功能：
-        1. 如果回复内容包含Markdown格式的图片（![]()），则直接使用Image(url=...)按原顺序与文本一起构建消息链。
-        2. 不再处理任何与“hello”或“测试”相关的逻辑。
+        1. 如果回复内容包含Markdown格式的图片（![]()），则直接使用Image(url=...)按原顺序与文本一起构建消息链；
+        2. 当图片URL是相对路径且 base_url 未配置时，保持原消息不改写（直接返回）。
+        3. 不再处理任何与“hello”或“测试”相关的逻辑。
 
         Args:
             ctx (EventContext): 事件上下文，包含AI响应文本等信息。
@@ -131,7 +141,16 @@ class ToImage(BasePlugin):
             resp_text = ctx.event.response_text or ""
 
             # 仅处理 Markdown 图片
-            if re.search(r'!\[([^\]]*)\]\(([^)]+)\)', resp_text):
+            img_pattern = r'!\[([^\]]*)\]\(([^)]+)\)'
+            if re.search(img_pattern, resp_text):
+                # 如果存在相对URL且未配置 base_url，则不改写原消息
+                # 判定相对URL：不以 http(s):// 或 data: 开头
+                urls = [m.group(2).strip() for m in re.finditer(img_pattern, resp_text)]
+                has_relative = any(not (u.lower().startswith('http://') or u.lower().startswith('https://') or u.lower().startswith('data:')) for u in urls)
+                if has_relative and not self.base_url:
+                    # 未配置 base_url，保持原消息
+                    return
+
                 parsed_content = self.parse_markdown_content(resp_text)
                 message_components = []
 
@@ -153,4 +172,3 @@ class ToImage(BasePlugin):
 
     def __del__(self):
         """插件析构函数，释放资源（如果有）。"""
-        pass
