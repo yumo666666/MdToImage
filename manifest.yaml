@@ -25,7 +25,18 @@ spec:
       type: string  # 配置项类型，支持 string, integer, float, boolean 等
       default: ''  # 配置项默认值
       required: false  # 配置项是否必填
+    - name: base_url  # 配置项名称
+      label:  # 配置项显示名称，支持多语言
+        en_US: Base URL
+        zh_CN: 基础地址
+      description:  # 配置项描述，支持多语言
+        en_US: Base URL for relative image paths (e.g., http://192.168.101.1:3005)
+        zh_CN: 用于补齐相对图片路径的基础地址（例如 http://192.168.101.1:3005）仅适用于fastgpt的图片路径，如果图片链接是完整的，可以不填写该配置
+
+      type: string  # 配置项类型
+      default: ''  # 配置项默认值
+      required: false  # 配置项是否必填
 execution:
   python:
     path: main.py  # 插件主程序路径，必须与上方插件入口代码的文件名相同
-    attr: ToImage  # 插件类名，必须与上方代码中声明的类名相同
+    attr: ToImagePlugin  # 插件类名，必须与上方代码中声明的类名相同
