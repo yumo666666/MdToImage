@@ -6,7 +6,7 @@ import re
 
 # 注册插件
 @register(name="ToImage", description="将AI回复中的Markdown图片转换为图片消息发送", version="0.1", author="yumo")
-class ToImage(BasePlugin):
+class ToImagePlugin(BasePlugin):
     """ToImage 插件
 
     功能：
@@ -21,13 +21,60 @@ class ToImage(BasePlugin):
         Args:
             host (APIHost): 插件宿主对象。
         """
-        pass
+        # 调用父类初始化，确保宿主对象等正确注入
+        super().__init__(host)
+        # base_url 不设默认值，仅在 initialize 中从配置读取
+        # self.base_url 将在 initialize 中按需设置
 
     async def initialize(self):
         """插件的异步初始化方法。
         用于在插件加载后进行异步资源初始化，例如网络连接、缓存预热等。
+        同时在此阶段从插件配置（manifest 注入）中读取 base_url（如未配置则不设置）。
         """
-        pass
+        try:
+            cfg = self.config or {}
+            cfg_base_url = str(cfg.get("base_url", "")).strip()
+            if cfg_base_url:
+                # 去除末尾斜杠，避免拼接出现重复 //
+                self.base_url = cfg_base_url.rstrip("/")
+                if hasattr(self, 'ap') and hasattr(self.ap, 'logger'):
+                    self.ap.logger.debug(f"ToImagePlugin 已应用配置 base_url={self.base_url}")
+        except Exception as e:
+            # 不中断主流程，记录日志以便排查
+            if hasattr(self, 'ap') and hasattr(self.ap, 'logger'):
+                self.ap.logger.error(f"ToImagePlugin.initialize 读取配置失败: {e}")
+
+    def normalize_image_url(self, url: str) -> str:
+        """将图片URL标准化。
+
+        功能：
+        - 若已是 http/https 或 data URI，则原样返回；
+        - 若以 "/" 开头（相对路径，如 /api/system/img/...），且已配置 base_url，则自动补齐为 base_url + 相对路径；
+        - 未配置 base_url 时不做补齐；
+        - 其他情况维持原样。
+
+        Args:
+            url (str): 图片原始URL。
+
+        Returns:
+            str: 处理后的完整URL（或原URL）。
+        """
+        try:
+            if not url:
+                return url
+            lower = url.lower()
+            if lower.startswith("http://") or lower.startswith("https://") or lower.startswith("data:"):
+                return url
+            if url.startswith("/"):
+                # 仅在已配置 base_url 时进行补齐
+                base = getattr(self, 'base_url', '').strip()
+                if base:
+                    return base.rstrip("/") + url
+                return url
+            return url
+        except Exception:
+            # 失败时不阻断流程，直接返回原URL
+            return url
 
     def parse_markdown_content(self, text: str):
         """解析包含Markdown图片的文本，返回文本片段和图片URL的有序列表。
@@ -41,7 +88,7 @@ class ToImage(BasePlugin):
         Returns:
             list: 有序列表，元素为{"type": "text", "content": str}或{"type": "image", "alt": str, "url": str}。
         """
-        # 匹配Markdown图片格式：![描述](URL)
+        # 匹配Markdown图片格式：![]()
         pattern = r'!\[([^\]]*)\]\(([^)]+)\)'
 
         result = []
@@ -56,7 +103,7 @@ class ToImage(BasePlugin):
 
             # 添加图片信息
             alt_text = match.group(1)
-            image_url = match.group(2)
+            image_url = self.normalize_image_url(match.group(2))
             result.append({"type": "image", "alt": alt_text, "url": image_url})
 
             last_end = match.end()
