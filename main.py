@@ -5,7 +5,7 @@ import re
 
 
 # 注册插件
-@register(name="ToImage", description="将AI回复中的Markdown图片转换为图片消息发送", version="0.1", author="RockChinQ")
+@register(name="ToImage", description="将AI回复中的Markdown图片转换为图片消息发送", version="0.1", author="yumo")
 class ToImagePlugin(BasePlugin):
     """ToImage 插件
 
