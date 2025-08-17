@@ -7,8 +7,8 @@ import os
 
 
 # 注册插件
-@register(name="ToImage", description="将AI回复中的Markdown图片转换为图片消息发送", version="0.1.0", author="yumo")
-class ToImage(BasePlugin):
+@register(name="MdToImage", description="将AI回复中的Markdown图片转换为图片消息发送", version="0.1.0", author="yumo")
+class MdToImage(BasePlugin):
     """ToImage 插件
 
     功能：
